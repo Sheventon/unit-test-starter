@@ -59,31 +59,29 @@ public class TestClassGenerator {
                 .forEach(field -> createClassField(classBuilder, field));
         Arrays.stream(clas.getDeclaredMethods())
                 .filter(method -> !method.isSynthetic() && isPublic(method.getModifiers()))
-                .forEach(method -> {
-                    methodsWithBody.forEach(methodDeclaration -> {
-                        if (method.getName().equals(methodDeclaration.getNameAsString())) {
-                            Set<Pair<String, MethodDeclaration>> methodCalls = findMethodsCall(
-                                    methodDeclaration,
-                                    methodsWithBody.stream()
-                                            .filter(methodDecl -> !methodDecl.getNameAsString().equals(method.getName()))
-                                            .collect(Collectors.toList())
-                            );
-                            Set<Pair<String, Pair<Class<?>, Method>>> beansCalls = findBeansCall(methodDeclaration, beans);
-                            if (!methodCalls.isEmpty()) {
-                                methodCalls.forEach(methodCall -> beansCalls.addAll(findBeansCall(methodCall.getRight(), beans)));
+                .forEach(method ->
+                        methodsWithBody.forEach(methodDeclaration -> {
+                            if (method.getName().equals(methodDeclaration.getNameAsString())) {
+                                Set<Pair<String, MethodDeclaration>> methodCalls = findMethodsCall(
+                                        methodDeclaration,
+                                        methodsWithBody.stream()
+                                                .filter(methodDecl -> !methodDecl.getNameAsString().equals(method.getName()))
+                                                .collect(Collectors.toList())
+                                );
+                                Set<Pair<String, Pair<Class<?>, Method>>> beansCalls = findBeansCall(methodDeclaration, beans);
+                                if (!methodCalls.isEmpty()) {
+                                    methodCalls.forEach(methodCall -> beansCalls.addAll(findBeansCall(methodCall.getRight(), beans)));
+                                }
+                                createTestMethod(classBuilder, method, clas.getSimpleName(), beansCalls);
                             }
-                            createTestMethod(classBuilder, method, clas.getSimpleName(), beansCalls);
-                        }
-                    });
-                });
+                        }));
 
         JavaFile javaFile = JavaFile.builder(clas.getPackageName(), classBuilder.build()).indent("    ")
-                .skipJavaLangImports(false)
+                .skipJavaLangImports(true)
                 .addStaticImport(ClassName.get("org.mockito", "Mockito"), "*")
                 .addStaticImport(ClassName.get("org.junit.jupiter.api", "Assertions"), "*")
                 .build();
         try {
-            javaFile.writeTo(System.out);
             javaFile.writeToFile(new File("src/test/java/"));
         } catch (IOException e) {
             throw new IllegalStateException(e);
@@ -109,10 +107,9 @@ public class TestClassGenerator {
             FieldSpec.Builder fieldBuilder = FieldSpec.builder(field.getType(), field.getName())
                     .addModifiers(Modifier.PRIVATE);
             Reflections reflections = new Reflections(field.getType().getPackageName(), new SubTypesScanner(false));
-            Class<?> type = field.getType();
             Set<Class<?>> classes = new HashSet<>();
             try {
-                classes = new HashSet<>(reflections.getSubTypesOf(type));
+                classes = new HashSet<>(reflections.getSubTypesOf(field.getType()));
             } catch (ReflectionsException e) {
                 try {
                     classes.add(Class.forName(field.getType().getName()));
@@ -226,11 +223,8 @@ public class TestClassGenerator {
                 method.getName(),
                 methodParams.length() > 0 ? methodParams.substring(0, methodParams.length() - 2) : "");
 
-        if (method.getReturnType().equals(void.class)) {
-            methodBuilder.addStatement(methodCallCode);
-        } else {
-            //methodBuilder.addStatement(String.format("assertEquals($T.class, %s.getClass())", methodCallCode), method.getReturnType());
-            methodBuilder.addStatement(String.format("assertDoesNotThrow(() -> %s)", methodCallCode));
+        methodBuilder.addStatement(String.format("assertDoesNotThrow(() -> %s)", methodCallCode));
+        if (!method.getReturnType().equals(void.class)) {
             methodBuilder.addStatement(String.format("assertNotNull(%s)", methodCallCode));
         }
 
