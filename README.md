@@ -1,2 +1,2 @@
 # unit-test-starter
-Генерация модульных тестов для Spring Boot-приложений
+Spring Boot Stater для генерации модульных тестов для Spring Boot-приложений
